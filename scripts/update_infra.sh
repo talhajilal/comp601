@@ -1,0 +1,1 @@
+aws cloudformation update-stack   --stack-name exampleInfra2  --template-body file://../infra/infra.yaml

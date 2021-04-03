@@ -1,0 +1,30 @@
+[
+    {
+      "ParameterKey": "VpcId",
+      "ParameterValue": "vpc-061361832a9d3f17c"
+    },
+    {
+      "ParameterKey": "certificateArn",
+      "ParameterValue": "arn:aws:iam::688230286630:server-certificate/ExampleCertificate"
+    },
+    {
+        "ParameterKey": "KeyName",
+        "ParameterValue": "example.com"
+    },
+    {
+      "ParameterKey": "Subnet1",
+      "ParameterValue": "subnet-0b2c5893dce48305b"
+  },
+  {
+    "ParameterKey": "Subnet2",
+    "ParameterValue": "subnet-0b1933b379ac774f8"
+},
+    {
+      "ParameterKey": "DbUserName",
+      "ParameterValue": "db"
+   },
+   {
+    "ParameterKey": "DbPassword",
+    "ParameterValue": "password"
+   }
+]

@@ -1,0 +1,463 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  Sample template for The example.ca.
+  template automatically scale up and down for HTTP Instances.
+Parameters:
+  VpcId:
+    Type: 'AWS::EC2::VPC::Id'
+    Description: VpcId of your existing Virtual Private Cloud (VPC)
+    # ConstraintDescription: must be the VPC Id of an existing Virtual Private Cloud.
+    #Default: vpc-0c470c6d3db9ca915
+  certificateArn:
+    Description: ARN of the SSL certificate for ALB See docs.
+    Type: String
+    # Default: arn:aws:iam::688230286630:server-certificate/ExampleCertificate
+  Subnet1:
+    Type: String
+    Description: The list of SubnetIds in your Virtual Private Cloud (VPC)
+    # Default: subnet-00e45f51bd6cf819c 
+  Subnet2:
+    Type: String
+    Description: The list of SubnetIds in your Virtual Private Cloud (VPC)
+    # Default: subnet-0cbe1c1b224006bac 
+  DbUserName:
+    Type: String
+    Description: db
+  DbPassword: 
+    Type: String
+    Description: password
+  AMIID:
+    Description: AMI ID
+    Type: String
+    Default: ami-03342e27ff9477f0e
+
+    # ConstraintDescription: >-
+    #   must be a list of at least two existing subnets associated with at least
+    #   two different availability zones. They should be residing in the selected
+    #   Virtual Private Cloud.
+  InstanceType:
+    Description: WebServer EC2 instance type
+    Type: String
+    Default: t2.micro
+    # AllowedValues:
+    #   - t1.micro
+    #   - t2.nano
+      # - t2.micro
+      # - t2.small
+    ConstraintDescription: must be a valid EC2 instance type.
+  KeyName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instances
+    Type: String
+    Default: example.com
+    # Type: 'AWS::EC2::KeyPair::KeyName'
+    # ConstraintDescription: must be the name of an existing EC2 KeyPair.
+  SSHLocation:
+    Description: The IP address range that can be used to SSH to the EC2 instances
+    Type: String
+    MinLength: '9'
+    MaxLength: '18'
+    Default: 0.0.0.0/0
+    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+Mappings:
+  Region2Examples:
+    us-east-1:
+      Examples: 'https://s3.amazonaws.com/cloudformation-examples-us-east-1'
+    us-west-2:
+      Examples: 'https://s3-us-west-2.amazonaws.com/cloudformation-examples-us-west-2'
+    us-west-1:
+      Examples: 'https://s3-us-west-1.amazonaws.com/cloudformation-examples-us-west-1'
+    eu-west-1:
+      Examples: 'https://s3-eu-west-1.amazonaws.com/cloudformation-examples-eu-west-1'
+    eu-west-2:
+      Examples: 'https://s3-eu-west-2.amazonaws.com/cloudformation-examples-eu-west-2'
+    eu-central-1:
+      Examples: >-
+        https://s3-eu-central-1.amazonaws.com/cloudformation-examples-eu-central-1
+    ap-southeast-1:
+      Examples: >-
+        https://s3-ap-southeast-1.amazonaws.com/cloudformation-examples-ap-southeast-1
+    ap-northeast-1:
+      Examples: >-
+        https://s3-ap-northeast-1.amazonaws.com/cloudformation-examples-ap-northeast-1
+    ap-northeast-2:
+      Examples: >-
+        https://s3-ap-northeast-2.amazonaws.com/cloudformation-examples-ap-northeast-2
+    ap-southeast-2:
+      Examples: >-
+        https://s3-ap-southeast-2.amazonaws.com/cloudformation-examples-ap-southeast-2
+    ap-south-1:
+      Examples: 'https://s3-ap-south-1.amazonaws.com/cloudformation-examples-ap-south-1'
+    us-east-2:
+      Examples: 'https://s3-us-east-2.amazonaws.com/cloudformation-examples-us-east-2'
+    ca-central-1:
+      Examples: >-
+        https://s3-ca-central-1.amazonaws.com/cloudformation-examples-ca-central-1
+    sa-east-1:
+      Examples: 'https://s3-sa-east-1.amazonaws.com/cloudformation-examples-sa-east-1'
+    cn-north-1:
+      Examples: >-
+        https://s3.cn-north-1.amazonaws.com.cn/cloudformation-examples-cn-north-1
+
+Resources:
+  ASGInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: AGInstanceProfile
+      Roles:
+        - !Ref ASGRole
+  ASGRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: '/'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchAgentAdminPolicy
+      RoleName: ASGRole
+
+  CodePipelineServiceRole:
+    Type: AWS::IAM::Role
+    # RoleName should not be specified to avoid name length limit (64 characters).
+    # AWS CloudFormation generates a unique physical ID and uses that ID for the role name.
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: F3
+            reason: |
+              This Role is not in use but need for s3 access.
+              This Role is not in use but need for s3 access.
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - 'cloudformation.amazonaws.com'
+                - 'codebuild.amazonaws.com'
+                - 'codepipeline.amazonaws.com'
+                - 's3.amazonaws.com'
+                - 'ec2.amazonaws.com'
+        Version: 2012-10-17
+      Path: /
+      # PermissionsBoundary: !Sub 'arn:aws:iam::${AWS::AccountId}:policy/*'
+      Policies:
+        - PolicyName: cloudformation
+          PolicyDocument:
+            Statement:
+              - Action:
+                  - 'cloudformation:*'
+                Effect: Allow
+                Resource: '*'
+            Version: 2012-10-17
+        - PolicyName: s3bucket
+          PolicyDocument:
+            Statement:
+              - Action:
+                  - 's3:*'
+                Effect: Allow
+                Resource: '*'
+            Version: 2012-10-17
+        - PolicyName: ec2-test
+          PolicyDocument:
+            Statement:
+              - Action:
+                  - 'ec2:*'
+                  - 'cloudwatch:*'
+                  - 'iam:CreateServiceLinkedRole'
+                  - 'elasticloadbalancing:*'
+                  - 'autoscaling:*'
+                  - 'sns:*'
+                  - 'events:*'
+                  - 'elasticloadbalancing:*'
+                Effect: Allow
+                Resource: '*'
+            Version: 2012-10-17
+
+  WebServerGroup:
+    Type: 'AWS::AutoScaling::AutoScalingGroup'
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT15M
+        Count: '1'
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        MaxBatchSize: '1'
+        MinInstancesInService: '1'
+        PauseTime: PT15M
+        WaitOnResourceSignals: 'true'
+    Properties:
+      VPCZoneIdentifier: 
+        - !Ref Subnet1
+        - !Ref Subnet2
+      LaunchConfigurationName: !Ref LaunchConfig
+      MinSize: '1'
+      MaxSize: '4'
+      TargetGroupARNs:
+        - !Ref ALBTargetGroup
+
+  ScaleUpPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref WebServerGroup
+      Cooldown: '1'
+      ScalingAdjustment: 1
+  ScaleDownPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref WebServerGroup
+      Cooldown: '1'
+      ScalingAdjustment: -1
+  MemoryAlarmHigh:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      EvaluationPeriods: 1
+      Statistic: Average
+      Threshold: 70
+      AlarmDescription: Go in Alarm is memory is higher than 70% for 60 seconds
+      Period: 60
+      AlarmActions:
+      - Ref: ScaleUpPolicy
+      Namespace: CWAgent
+      Dimensions:
+      - Name: AutoScalingGroupName
+        Value: !Ref WebServerGroup
+      ComparisonOperator: GreaterThanThreshold
+      MetricName: mem_used_percent
+
+  MemoryAlarmLow:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      EvaluationPeriods: 1
+      Statistic: Average
+      Threshold: 30
+      AlarmDescription: Go in Alarm is memory is lower than 30% for 60 seconds
+      Period: 60
+      AlarmActions:
+      - Ref: ScaleDownPolicy
+      Namespace: CWAgent
+      Dimensions:
+      - Name: AutoScalingGroupName
+        Value: !Ref WebServerGroup
+      ComparisonOperator: LessThanOrEqualToThreshold
+      MetricName: mem_used_percent
+
+
+  LaunchConfig:
+    Type: 'AWS::AutoScaling::LaunchConfiguration'
+    Metadata:
+      Comment: Install a simple application
+      'AWS::CloudFormation::Init':
+        config:
+          packages:
+            yum:
+              httpd: []
+          files:
+            /var/www/html/index.html:
+              content: !Join 
+                - |+
+
+                - - <img src="
+                  - !FindInMap 
+                    - Region2Examples
+                    - !Ref 'AWS::Region'
+                    - Examples
+                  - /cloudformation_graphic.png" alt="AWS CloudFormation Logo"/>
+                  - >-
+                    <h1>Congratulation "COMP 601 You Have Created Your Fully Automated Web Infra On AWS"
+                    Reusable Objects
+                    Sample Has.</h1>
+              mode: '000644'
+              owner: root
+              group: root
+            /etc/cfn/cfn-hup.conf:
+              content: !Join 
+                - ''
+                - - |
+                    [main]
+                  - stack=
+                  - !Ref 'AWS::StackId'
+                  - |+
+
+                  - region=
+                  - !Ref 'AWS::Region'
+                  - |+
+
+              mode: '000400'
+              owner: root
+              group: root
+            /etc/cfn/hooks.d/cfn-auto-reloader.conf:
+              content: !Join 
+                - ''
+                - - |
+                    [cfn-auto-reloader-hook]
+                  - |
+                    triggers=post.update
+                  - >
+                    path=Resources.LaunchConfig.Metadata.AWS::CloudFormation::Init
+                  - 'action=/opt/aws/bin/cfn-init -v '
+                  - '         --stack '
+                  - !Ref 'AWS::StackName'
+                  - '         --resource LaunchConfig '
+                  - '         --region '
+                  - !Ref 'AWS::Region'
+                  - |+
+
+                  - |
+                    runas=root
+          services:
+            sysvinit:
+              httpd:
+                enabled: 'true'
+                ensureRunning: 'true'
+              cfn-hup:
+                enabled: 'true'
+                ensureRunning: 'true'
+                files:
+                  - /etc/cfn/cfn-hup.conf
+                  - /etc/cfn/hooks.d/cfn-auto-reloader.conf
+    Properties:
+      KeyName: !Ref KeyName
+      #IamInstanceProfile: !Ref CodePipelineServiceRole
+      IamInstanceProfile: !Ref ASGInstanceProfile
+      ImageId: !Ref AMIID 
+
+      SecurityGroups:
+        - !Ref InstanceSecurityGroup
+      InstanceType: !Ref InstanceType
+      UserData: !Base64 
+        'Fn::Join':
+          - ''
+          - - |
+              #!/bin/bash -xe
+            - |
+              yum update -y aws-cfn-bootstrap amazon-cloudwatch-agent
+            - '/opt/aws/bin/cfn-init -v '
+            - '         --stack '
+            - !Ref 'AWS::StackName'
+            - '         --resource LaunchConfig '
+            - '         --region '
+            - !Ref 'AWS::Region'
+            - |+
+
+            - '/opt/aws/bin/cfn-signal -e $? '
+            - '         --stack '
+            - !Ref 'AWS::StackName'
+            - '         --resource WebServerGroup '
+            - '         --region '
+            - !Ref 'AWS::Region'
+            - |+
+
+  ApplicationLoadBalancer:
+    Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+    Properties:
+      Subnets: 
+        - !Ref Subnet1
+        - !Ref Subnet2
+      SecurityGroups: 
+        - !Ref albSecurityPolicy
+  ALBListener:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Protocol: "HTTPS"
+            Port: 443
+            Host: "#{host}"
+            Path: "/#{path}"
+            Query: "#{query}"
+            StatusCode: "HTTP_301"
+      LoadBalancerArn: !Ref ApplicationLoadBalancer      
+      Port: '80'
+      Protocol: HTTP
+  HTTPSAlbListener:
+    Type: "AWS::ElasticLoadBalancingV2::Listener"
+    Properties:
+      Certificates:
+        - CertificateArn: !Ref certificateArn
+      DefaultActions:
+        - TargetGroupArn: !Ref ALBTargetGroup
+          Type: forward
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      #SslPolicy: !Ref albSecurityPolicy
+      SslPolicy: ELBSecurityPolicy-2016-08
+  dbSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Disable later ssh.
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '3306'
+          ToPort: '3306'
+          CidrIp: 172.0.0.0/4
+        - IpProtocol: tcp
+          FromPort: '443'
+          ToPort: '443'
+          CidrIp: 172.0.0.0/4
+      VpcId: !Ref VpcId
+  ALBTargetGroup:
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+    Properties:
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 3
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 5
+      VpcId: !Ref VpcId
+  InstanceSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Enable SSH access and HTTP access on the configured port
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: !Ref SSHLocation
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '443'
+          ToPort: '443'
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref VpcId
+  albSecurityPolicy:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Enable SSH access and HTTP access on the configured port
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '443'
+          ToPort: '443'
+          CidrIp: !Ref SSHLocation
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref VpcId
+
+Outputs:
+  URL:
+    Description: URL of the website
+    Value: !Join 
+      - ''
+      - - 'http://'
+        - !GetAtt 
+          - ApplicationLoadBalancer
+          - DNSName

@@ -1,0 +1,1 @@
+aws cloudformation create-stack   --stack-name example.comWeb  --template-body file://../resources/stack.yaml  --parameters file://../resources/parameter.json --tags file://../resources/tags.json --capabilities CAPABILITY_IAM  --profile default --region us-east-1

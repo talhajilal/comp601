@@ -1,0 +1,1 @@
+aws iam upload-server-certificate --server-certificate-name ExampleCertificate --certificate-body file://../sslcerts/certificate.crt --certificate-chain file://../sslcerts/ca_bundle.crt --private-key file://../sslcerts/private.key
